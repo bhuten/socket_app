@@ -1,4 +1,16 @@
-var socketApp = angular.module('socketApp', ['ngRoute']);
+var socketApp = angular.module('socketApp', ['ngRoute','btford.socket-io']);
+
+// This module requires a socket.io client lib which is loaded before the load using CDN
+socketApp.factory('mySocket', function (socketFactory) {
+
+    // address of the node server
+    var myIoSocket = io.connect('localhost:8100');
+
+    mySocket = socketFactory({
+        ioSocket: myIoSocket
+    });
+    return mySocket;
+});
 
 socketApp.config([
     "$httpProvider", function($httpProvider) {
@@ -18,31 +30,50 @@ socketApp.config(function($routeProvider, $locationProvider, $httpProvider) {
         });
     });
 
-socketApp.controller('employeeCtrl', function($scope, $http, $log){ // socketio object passed here
+socketApp.controller('employeeCtrl', function($scope, $http, $log, mySocket){ // socketio object passed here
+    var employeeData = [];
+    mySocket.on('user:created:update', function(data) {
+        console.log('update', data);
+
+        // push into the data and update the table
+        employeeData.push(data);
+        $scope.employees = employeeData;
+    });
+
     $scope.title = "Employees";
-    $scope.employees = [];
+    $scope.employees = employeeData;
 
     $http.get('/employees.json').then(function(response){
-        $scope.employees = response.data;
+
+        employeeData = response.data;
+        $scope.employees = employeeData;
+
     }, function(){
         $log.log(response);
     });
 });
-socketApp.controller('newEmployeeCtrl', function($scope, $http, $log){
+socketApp.controller('newEmployeeCtrl', function($scope, $http, $log, mySocket){
     $scope.name = null;
     $scope.age = null;
     $scope.createNewEmployee = function(name, age) {
+        newEmployee = {
+            name: $scope.name,
+            age: $scope.age
+        };
         $http({
             url: '/employees.json',
             method: 'POST',
-            data: {
-                name: $scope.name,
-                age: $scope.age
-            }
+            data: newEmployee
         }).then(function(response){
-            $log.log(response.data);
+            // success
+            if(response.status == 201){
+                // emit to socket
+                mySocket.emit('user:created', newEmployee);
+            }
+            $log.info(response.data);
         }, function(response){
-            $log.log(response);
+            // error
+            $log.error(response);
         });
     }
 });
